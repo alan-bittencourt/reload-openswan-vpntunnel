@@ -1,0 +1,283 @@
+#!/bin/sh
+#########################################################################################################
+# Esta e um funcao de controle interno do script utilizada para incrementar o contador de tuneis ativos #
+#########################################################################################################
+add_1_lineupvpn () {
+ LINEUPVPN=`expr $LINEUPVPN + 1`
+}
+##############################################################################################################
+# Esta e um funcao de controle interno do script utilizada para incrementar o contador de tuneis habilitados #
+##############################################################################################################
+add_1_lineenvpn () {
+ LINEENVPN=`expr $LINEENVPN + 1`
+}
+###############################
+# Esta funcao levanta o tunel #
+###############################
+up_vpn () {
+ $DAEMON $UP $1
+}
+##################################################
+# Esta funcao readciona o tunel que estava caido #
+##################################################
+add_vpn () {
+ $DAEMON $ADD $1
+}
+#############################################
+# Esta funcao derruba o tunel com problemas #
+#############################################
+remove_vpn () {
+ $DAEMON $REMOVE $1
+}
+########################################
+# Esta funcao reinicaliza o tunel down #
+########################################
+restart_vpn () {
+ remove_vpn $1
+ add_vpn $1
+ up_vpn $1
+}
+###################################################################
+# Esta funcao gera uma lista com o nome de todos os tuneis ativos #
+###################################################################
+get_list_up_vpn () {
+ $DAEMON $STATUS | $BINGREP "$STRING" | $BINAWK '{print $3}' | $BINAWK -F ":" '{print $1}' | $BINCUT -c2-5 > $DATABASEUPVPN
+ LIMITUPVPN=$($BINWC -l $DATABASEUPVPN | $BINAWK {'print $1'})
+}
+#########################################################
+# Esta funcao gera a lista com os Tuneis ativos no conf #
+#########################################################
+make_temp_en_list () {
+ $BINGREP $STR $CONF > $TEMPENLIST
+}
+############################################
+# Esta funcao coleta o id do tunel no conf #
+############################################
+get_tempid () {
+ TEMPID=$($BINHEAD -$LINETEMPVPN $TEMPENLIST | $TAIL | $BINAWK '{print $2}')
+}
+#############################################
+# Esta funcao coleta o id do tunel na lista #
+#############################################
+get_tempconn () {
+ TEMPCONN=$($BINHEAD -$LINETEMPVPN $TEMPENLIST | $TAIL | $BINAWK '{print $1}')
+}
+######################################################################################################################
+# Esta e um funcao de controle interno do script utilizada para incrementar o contador de tuneis habilitados no Conf #
+######################################################################################################################
+add_1_linetempvpn () {
+ LINETEMPVPN=`expr $LINETEMPVPN + 1`
+}
+################################################################
+# Esta funcao cria uma lista de tuneis ativos a partir do conf #
+################################################################
+make_en_list_vpn () {
+ make_temp_en_list
+ $BINTOUCH $BKPDATABASEENVPN
+ $BINCAT $DATABASEENVPN > $BKPDATABASEENVPN
+ $BINCAT $DEVNULL > $DATABASEENVPN
+ while [ $LINETEMPVPN -le $LIMITTEMPVPN ]
+ do
+ get_tempconn
+ if [ $TEMPCONN == $STR ]
+ then
+ get_tempid
+ echo $TEMPID >> $DATABASEENVPN
+ fi
+ add_1_linetempvpn
+ done
+ LIMITENVPN=$($BINWC -l $DATABASEENVPN | $BINAWK {'print $1'})
+}
+###########################################################
+# Esta funcao pega o nome do tunel ativo a ser confirmado #
+###########################################################
+get_upid () {
+ UPID=$($BINHEAD -$LINEUPVPN $DATABASEUPVPN | $TAIL)
+}
+##############################################################
+# Esta funcao pega o nome do tunel habilido a ser verificado #
+##############################################################
+get_enid () {
+ ENID=$($BINHEAD -$LINEENVPN $DATABASEENVPN | $TAIL)
+}
+#############################################################
+# Esta funcao gera uma entrada no log se o tunel estiver up #
+#############################################################
+log_envpn_is_up () {
+ $BINLOGGER -i "Tunel $1 OK"
+}
+###############################################################
+# Esta funcao gera uma entrada no log se o tunel estiver down #
+###############################################################
+log_envpn_is_down () {
+ $BINLOGGER -i "Tunel $1 $MSGDOWN"
+}
+#######################################################
+# Esta funcao envia um e-mail se o tunel estiver down #
+#######################################################
+sent_mail_warn_if_vpn_is_down () {
+ make_body_mail_warn $1
+ $MUTT "Tunel Titans $1 $MSGDOWN" $BODY $MAILWARN2 < /dev/null
+}
+##########################################################################################
+# Esta funcao apaga o arquivo que sera o corpo da mensagem a ser enviada para a gerencia #
+##########################################################################################
+clean_body_manager () {
+ rm -f $1
+}
+############################################################################
+# Esta funcao envia o e-mail de aviso de tuneis que cairam para a gerencia #
+############################################################################
+sent_mail_manager () {
+ while [ $LINEENVPN -le $LIMITENVPN ]
+ do
+ get_enid
+ set_body_manager $ENID
+ if [ -e $MANAGERFILE ]
+ then
+ $MUTT "Tunel Titans $ENID $MSGDOWN" $BODYMANAGER $MAILWARN < /dev/null
+ clean_body_manager $MANAGERFILE
+ fi
+ add_1_lineenvpn
+ done
+}
+###############################################################################################################
+# Esta funcao seta a variavel que contem o arquivo que sera o corpo da mensagem a ser enviada para a gerencia #
+###############################################################################################################
+set_body_manager () {
+ MANAGERFILE="$DATAPATH/$1"
+ BODYMANAGER="-i $MANAGERFILE"
+}
+##############################################################
+# Esta funcao cria o corpo do e-mail se o tunel estiver down #
+##############################################################
+make_body_mail_warn () {
+ $DAEMON $STATUS | $BINGREP $1 > $BODYFILE
+}
+######################################################################
+# Esta funcao coloca data no corpo do e-mail se o tunel estiver down #
+######################################################################
+put_date_of_execution_on_body () {
+ $BINECHO " " >> $DATAPATH/$1
+ $BINDATE >> $DATAPATH/$1
+ $BINECHO " " >> $DATAPATH/$1
+}
+##########################################################################################
+# Esta funcao cria o log do e-mail a ser enviado para a gerencia se o tunel estiver down #
+##########################################################################################
+bulid_body_mail_manager () {
+ $BINTOUCH $DATAPATH/$1
+}
+##############################################################################################################
+# Esta funcao verifica a existencia do corpo do e-mail a ser enviado para a gerencia se o tunel estiver down #
+##############################################################################################################
+check_if_body_exist () {
+ if [ -e $DATAPATH/$1 ]
+ then
+ put_date_of_execution_on_body $1
+ else
+ bulid_body_mail_manager $1
+ put_date_of_execution_on_body $1
+ fi
+}
+############################################################################################
+# Esta funcao cria o corpo do e-mail a ser enviado para a gerencia se o tunel estiver down #
+############################################################################################
+make_body_mail_manager_warn () {
+ check_if_body_exist $1
+ $DAEMON $STATUS | $BINGREP $1 >> $DATAPATH/$1
+}
+############################################################################
+# Esta funcao faz um grep para a procura do status do tunel reinicializado #
+############################################################################
+get_check_id () {
+ CHECK=$($DAEMON $STATUS | $BINGREP $1 | $BINGREP "$STRING" | $BINAWK '{print $3}' | $BINAWK -F ":" '{print $1}' | $BINCUT -c2-5)
+}
+############################################################
+# Esta funcao testa se o tunel reinicializado subiu ou nao #
+############################################################
+check_if_restart_ok () {
+ get_check_id $1
+ if [ $CHECK == $1 ]
+ then
+ log_envpn_is_up $1
+ else
+ log_envpn_is_down $1
+ make_body_mail_manager_warn $1
+ sent_mail_warn_if_vpn_is_down $1
+ fi
+}
+#################################################
+# Esta funcao coleta o PID do ipsec no /var/run #
+#################################################
+getplutoid () {
+ PLUTOPID=`$BINCAT $FILEPLUTOPID`
+}
+#####################################################
+# Esta funcao testa se o PID ainda esta em execucao #
+#####################################################
+checkprocess () {
+ $BINPS $PLUTOPID && return 0 || return 1
+}
+########################################################
+# Esta funcao verifica se o arquivo no /var/run existe #
+########################################################
+checkexist () {
+ if [ ! -f $FILEPLUTOPID ]
+ then
+ return 1
+ fi
+ return 0
+}
+#################################################################################
+# Esta funcao testa se o ipsec parou e o inicializa se o firewall estiver ativo #
+#################################################################################
+verifyprocess () {
+ if [ ! checkexist ]
+ then
+ $BINLOGGER -i "IPsec not Running Firewall Stand by"
+ else
+ {
+ getplutoid
+ if [ ! checkprocess ]
+ then
+ {
+ $BINLOGGER -i "IPsec parado!!!"
+ #sentmailsegmentation
+ $MASTERRESTART
+ }
+# else
+# $BINLOGGER -i "IPsec running!!!"
+ fi
+ }
+ fi
+}
+##########################################################
+# Esta funcao verifica se os tuneis habilitados estao UP #
+##########################################################
+check_if_envpn_is_up () {
+ get_list_up_vpn
+ while [ $LINEENVPN -le $LIMITENVPN ]
+ do
+ get_enid
+ while [ $LINEUPVPN -le $LIMITUPVPN ]
+ do
+ get_upid
+ if [ $UPID == $ENID ]
+ then
+ TUNELUP="true"
+ fi
+ add_1_lineupvpn
+ done
+ if [ $TUNELUP == "false" ]
+ then
+ restart_vpn $ENID
+ check_if_restart_ok $ENID
+ else
+ log_envpn_is_up $ENID
+ fi
+ add_1_lineenvpn
+ LINEUPVPN="1"
+ TUNELUP="false"
+ done
+}

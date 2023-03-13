@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# reloadvpn ele inicia e para o script de reinicializa as vpns down
+#
+# chkconfig: 2345 12 88
+# description: reloadvpn
+#
+#
+### BEGIN INIT INFO
+### END INIT INFO
+
+#######################
+# Definindo variaveis #
+#######################
+SCRIPTPATH="/sbin/scripts/restartvpn"
+#######################
+# Fazendo os Includes #
+#######################
+source $SCRIPTPATH/variaveisvpn
+source $SCRIPTPATH/functions
+
+OK () {
+ echo -e "\\033[1;39m [ \\033[1;32mOK\\033[1;39m ]\\033[1;0m"
+}
+DOWN () {
+ echo -e "\\033[1;39m [ \\033[1;31mDOWN\\033[1;39m ]\\033[1;0m"
+}
+STOP () {
+ chmod -x /sbin/scripts/reloadvpn.sh
+ chmod -x /sbin/scripts/sentmailmanager.sh
+ DOWN
+}
+START () {
+ chmod +x /sbin/scripts/reloadvpn.sh
+ chmod +x /sbin/scripts/sentmailmanager.sh
+ OK
+}
+RESTART () {
+ STOP
+ START
+}
+case $1 in
+ start)
+ START
+ ;;
+ stop)
+ STOP
+ ;;
+ restart)
+ RESTART
+ ;;
+ *)
+ echo -e "Tente $0 {start|stop|restart}"
+ ;;
+esac
